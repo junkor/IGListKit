@@ -13,7 +13,8 @@ final class MixedDataViewController: UIViewController, ListAdapterDataSource, Li
     lazy var adapter: ListAdapter = {
         return ListAdapter(updater: ListAdapterUpdater(), viewController: self)
     }()
-    let collectionView = UICollectionView(frame: .zero, collectionViewLayout: UICollectionViewFlowLayout())
+
+    let collectionView = UICollectionView(frame: .zero, collectionViewLayout: FlexLayout.init(stickyHeaders: false, topContentInset: 10, stretchToEdge: true))
 
     var data: [Any] = [
         "Maecenas faucibus mollis interdum. Duis mollis, est non commodo luctus, nisi erat porttitor ligula, eget lacinia odio sem nec elit.",

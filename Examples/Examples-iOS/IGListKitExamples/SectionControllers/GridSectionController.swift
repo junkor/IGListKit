@@ -62,7 +62,25 @@ final class GridSectionController: ListSectionController {
 
     override func sizeForItem(at index: Int) -> CGSize {
         let width = collectionContext?.containerSize.width ?? 0
-        let itemSize = floor(width / 4)
+        var itemSize: CGFloat = 0
+        switch index {
+        case 0:
+            itemSize = 50
+        case 1:
+            itemSize = 200
+        case 2:
+            itemSize = 100
+        case 3:
+            itemSize = 10
+        case 4:
+            itemSize = 100
+        case 5:
+            itemSize = 50
+        case 6:
+            itemSize = 20
+        default:
+            itemSize = floor(width / 4)
+        }
         return CGSize(width: itemSize, height: itemSize)
     }
 
