@@ -100,6 +100,15 @@ void IGListSectionControllerPopThread(void) {
     IGFailAssert(@"Section controller %@ must override %s if interactive reordering is enabled.", self, __PRETTY_FUNCTION__);
 }
 
+- (BOOL)isWaterFlow {
+    return NO;
+}
+
+- (NSInteger)waterFlowColumn
+{
+    return 1;
+}
+
 - (void)willDisplayCell:(UICollectionViewCell *)cell atIndex:(NSInteger)index listAdapter:(IGListAdapter *)listAdapter {
     [self.displayDelegate listAdapter:listAdapter willDisplaySectionController:self cell:cell atIndex:index];
 }

@@ -687,6 +687,18 @@
     return CGSizeZero;
 }
 
+#pragma mark - WBLayout
+- (BOOL)isWaterFlowInSection:(NSInteger)section
+{
+    IGListSectionController *sectionController = [self sectionControllerForSection:section];
+    return [sectionController isWaterFlow];
+}
+
+- (NSInteger)waterFlowColumnInSection:(NSInteger)section
+{
+    IGListSectionController *sectionController = [self sectionControllerForSection:section];
+    return [sectionController waterFlowColumn];
+}
 
 #pragma mark - Private API
 

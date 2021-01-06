@@ -276,6 +276,13 @@ NS_SWIFT_NAME(ListAdapter)
 - (CGSize)sizeForSupplementaryViewOfKind:(NSString *)elementKind
                              atIndexPath:(NSIndexPath *)indexPath;
 
+
+
+- (BOOL)isWaterFlowInSection:(NSInteger)section;
+
+- (NSInteger)waterFlowColumnInSection:(NSInteger)section;
+
+
 /**
  Adds a listener to the list adapter.
 

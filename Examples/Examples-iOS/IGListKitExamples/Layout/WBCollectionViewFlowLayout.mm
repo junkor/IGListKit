@@ -1,19 +1,18 @@
 //
-//  FlexLayout.m
+//  WBCollectionViewFlowLayout.m
 //  IGListKitExamples
 //
 //  Created by junlin3 on 2020/12/17.
 //  Copyright © 2020 Instagram. All rights reserved.
 //
 
-#import "FlexLayout.h"
+#import "WBCollectionViewFlowLayout.h"
+#import "WBCollectionViewDelegateFlowLayout.h"
 
 #import <vector>
 
 #import <IGListDiffKit/IGListAssert.h>
 #import <IGListKit/IGListCollectionViewDelegateLayout.h>
-
-//#import "UIScrollView+IGListKit.h"
 
 
 @interface UIScrollView (IGListKit)
@@ -93,6 +92,19 @@ static CGFloat CGSizeGetLengthInDirection(CGSize size, UICollectionViewScrollDir
     }
 }
 
+static CGFloat CGSizeGetColumnLenInDirection(CGSize size, NSInteger column, CGFloat itemSpacing, UICollectionViewScrollDirection direction)
+{
+    CGFloat len = 0;
+    switch (direction) {
+        case UICollectionViewScrollDirectionVertical: len = size.height;
+        case UICollectionViewScrollDirectionHorizontal: len = size.width;
+    }
+    if (column > 1) {
+        len = (len - itemSpacing * (column - 1)) / column;
+    }
+    return len;
+}
+
 static NSIndexPath *indexPathForSection(NSInteger section) {
     return [NSIndexPath indexPathForItem:0 inSection:section];
 }
@@ -110,11 +122,16 @@ static NSInteger IGListMergeMinimumInvalidatedSection(NSInteger section, NSInteg
 }
 
 struct IGListSectionColumnEntry {
-    // 具体列的下标
-    NSInteger index;
+    // 当前列的x坐标（每一列的x坐标在当前组确定列数的时候就确定了）
+    CGFloat coordInFixedDirection;
     // 当前列的最边界坐标
-    CGFloat lastCoordInDirection;
+    CGFloat lastCoordInScrollDirection;
 };
+
+static bool sortColumnEntry(IGListSectionColumnEntry entry1, IGListSectionColumnEntry entry2) {
+    return entry1.lastCoordInScrollDirection < entry2.lastCoordInScrollDirection;
+}
+
 
 struct IGListSectionEntry {
     /**
@@ -198,7 +215,7 @@ static void adjustZIndexForAttributes(UICollectionViewLayoutAttributes *attribut
 
 
 
-@interface FlexLayout ()
+@interface WBCollectionViewFlowLayout ()
 
 @property (nonatomic, assign, readonly) BOOL stickyHeaders;
 @property (nonatomic, assign, readonly) CGFloat topContentInset;
@@ -206,7 +223,7 @@ static void adjustZIndexForAttributes(UICollectionViewLayoutAttributes *attribut
 
 @end
 
-@implementation FlexLayout {
+@implementation WBCollectionViewFlowLayout {
     std::vector<IGListSectionEntry> _sectionData;
     NSMutableDictionary<NSIndexPath *, UICollectionViewLayoutAttributes *> *_attributesCache;
 
@@ -509,7 +526,304 @@ static void adjustZIndexForAttributes(UICollectionViewLayoutAttributes *attribut
 
 #pragma mark - Private API
 
-- (void)_calculateLayoutIfNeeded {
+- (void)_calculateNormal:(UICollectionView *)collectionView
+adjustedCollectionViewBounds:(const CGRect &)adjustedCollectionViewBounds
+                delegate:(id<UICollectionViewDelegateFlowLayout>)delegate
+itemCoordInFixedDirection:(CGFloat &)itemCoordInFixedDirection
+itemCoordInScrollDirection:(CGFloat &)itemCoordInScrollDirection
+nextRowCoordInScrollDirection:(CGFloat &)nextRowCoordInScrollDirection
+    rollingSectionBounds:(CGRect &)rollingSectionBounds
+                 section:(NSInteger)section
+{
+    const NSInteger itemCount = [collectionView numberOfItemsInSection:section];
+    const BOOL itemsEmpty = itemCount == 0;
+    const BOOL hideHeaderWhenItemsEmpty = itemsEmpty && !self.showHeaderWhenEmpty;
+    _sectionData[section].itemBounds = std::vector<CGRect>(itemCount);
+    
+    const CGSize headerSize = [delegate collectionView:collectionView layout:self referenceSizeForHeaderInSection:section];
+    const CGSize footerSize = [delegate collectionView:collectionView layout:self referenceSizeForFooterInSection:section];
+    const UIEdgeInsets insets = [delegate collectionView:collectionView layout:self insetForSectionAtIndex:section];
+    const CGFloat lineSpacing = [delegate collectionView:collectionView layout:self minimumLineSpacingForSectionAtIndex:section];
+    const CGFloat interitemSpacing = [delegate collectionView:collectionView layout:self minimumInteritemSpacingForSectionAtIndex:section];
+    
+    const CGSize paddedCollectionViewSize = UIEdgeInsetsInsetRect(adjustedCollectionViewBounds, insets).size;
+    const UICollectionViewScrollDirection fixedDirection = self.scrollDirection == UICollectionViewScrollDirectionHorizontal ? UICollectionViewScrollDirectionVertical : UICollectionViewScrollDirectionHorizontal;
+    const CGFloat paddedLengthInFixedDirection = CGSizeGetLengthInDirection(paddedCollectionViewSize, fixedDirection);
+    const CGFloat headerLengthInScrollDirection = hideHeaderWhenItemsEmpty ? 0 : CGSizeGetLengthInDirection(headerSize, self.scrollDirection);
+    const CGFloat footerLengthInScrollDirection = hideHeaderWhenItemsEmpty ? 0 : CGSizeGetLengthInDirection(footerSize, self.scrollDirection);
+    const BOOL headerExists = headerLengthInScrollDirection > 0;
+    const BOOL footerExists = footerLengthInScrollDirection > 0;
+    
+    // start the section accounting for the header size
+    // header length in scroll direction is subtracted from the sectionBounds when calculating the header bounds after items are done
+    // this bumps the first row of items over enough to make room for the header
+    itemCoordInScrollDirection += headerLengthInScrollDirection;
+    nextRowCoordInScrollDirection += headerLengthInScrollDirection;
+    
+    // add the leading inset in fixed direction in case the section falls on the same row as the previous
+    // if the section is newlined then the coord in fixed direction is reset
+    itemCoordInFixedDirection += UIEdgeInsetsLeadingInsetInDirection(insets, fixedDirection);
+    
+    // the farthest in the fixed direction the frame of an item in this section can go
+    const CGFloat maxCoordinateInFixedDirection = CGRectGetLengthInDirection(adjustedCollectionViewBounds, fixedDirection) - UIEdgeInsetsTrailingInsetInDirection(insets, fixedDirection);
+    
+    for (NSInteger item = 0; item < itemCount; item++) {
+        NSIndexPath *indexPath = [NSIndexPath indexPathForItem:item inSection:section];
+        const CGSize size = [delegate collectionView:collectionView layout:self sizeForItemAtIndexPath:indexPath];
+        
+        IGAssert(CGSizeGetLengthInDirection(size, fixedDirection) <= paddedLengthInFixedDirection
+                 || fabs(CGSizeGetLengthInDirection(size, fixedDirection) - paddedLengthInFixedDirection) < FLT_EPSILON,
+                 @"%@ of item %li in section %li (%.0f pt) must be less than or equal to container (%.0f pt) accounting for section insets %@",
+                 self.scrollDirection == UICollectionViewScrollDirectionVertical ? @"Width" : @"Height",
+                 (long)item,
+                 (long)section,
+                 CGSizeGetLengthInDirection(size, fixedDirection),
+                 CGRectGetLengthInDirection(adjustedCollectionViewBounds, fixedDirection),
+                 NSStringFromUIEdgeInsets(insets));
+        
+        CGFloat itemLengthInFixedDirection = MIN(CGSizeGetLengthInDirection(size, fixedDirection), paddedLengthInFixedDirection);
+        
+        // if the origin and length in fixed direction of the item busts the size of the container
+        // or if this is the first item and the header has a non-zero size
+        // newline to the next row and reset
+        // define epsilon to avoid float overflow issue
+        const CGFloat epsilon = 1.0;
+        if (itemCoordInFixedDirection + itemLengthInFixedDirection > maxCoordinateInFixedDirection + epsilon
+            || (item == 0 && headerExists)) {
+            itemCoordInScrollDirection = nextRowCoordInScrollDirection;
+            itemCoordInFixedDirection = UIEdgeInsetsLeadingInsetInDirection(insets, fixedDirection);
+            
+            
+            // if newlining, always append line spacing unless its the very first item of the section
+            if (item > 0) {
+                itemCoordInScrollDirection += lineSpacing;
+            }
+        }
+        
+        const CGFloat distanceToEdge = paddedLengthInFixedDirection - (itemCoordInFixedDirection + itemLengthInFixedDirection);
+        if (self.stretchToEdge && distanceToEdge > 0 && distanceToEdge <= epsilon) {
+            itemLengthInFixedDirection = paddedLengthInFixedDirection - itemCoordInFixedDirection;
+        }
+        
+        const CGRect rawFrame = (self.scrollDirection == UICollectionViewScrollDirectionVertical) ?
+        CGRectMake(itemCoordInFixedDirection,
+                   itemCoordInScrollDirection + insets.top,
+                   itemLengthInFixedDirection,
+                   size.height) :
+        CGRectMake(itemCoordInScrollDirection + insets.left,
+                   itemCoordInFixedDirection,
+                   size.width,
+                   itemLengthInFixedDirection);
+        const CGRect frame = IGListRectIntegralScaled(rawFrame);
+        
+        _sectionData[section].itemBounds[item] = frame;
+        
+        // track the max size of the row to find the coord of the next row, adjust for leading inset while iterating items
+        nextRowCoordInScrollDirection = MAX(CGRectGetMaxInDirection(frame, self.scrollDirection) - UIEdgeInsetsLeadingInsetInDirection(insets, self.scrollDirection), nextRowCoordInScrollDirection);
+        
+        // increase the rolling coord in fixed direction appropriately and add item spacing for all items on the same row
+        itemCoordInFixedDirection += itemLengthInFixedDirection + interitemSpacing;
+        
+        // union the rolling section bounds
+        if (item == 0) {
+            rollingSectionBounds = frame;
+        } else {
+            rollingSectionBounds = CGRectUnion(rollingSectionBounds, frame);
+        }
+    }
+    
+    const CGRect headerBounds = self.scrollDirection == UICollectionViewScrollDirectionVertical ?
+    CGRectMake(insets.left,
+               itemsEmpty ? CGRectGetMaxY(rollingSectionBounds) : CGRectGetMinY(rollingSectionBounds) - headerSize.height,
+               paddedLengthInFixedDirection,
+               hideHeaderWhenItemsEmpty ? 0 : headerSize.height) :
+    CGRectMake(itemsEmpty ? CGRectGetMaxX(rollingSectionBounds) : CGRectGetMinX(rollingSectionBounds) - headerSize.width,
+               insets.top,
+               hideHeaderWhenItemsEmpty ? 0 : headerSize.width,
+               paddedLengthInFixedDirection);
+    
+    _sectionData[section].headerBounds = headerBounds;
+    
+    if (itemsEmpty) {
+        rollingSectionBounds = headerBounds;
+    }
+    
+    const CGRect footerBounds = (self.scrollDirection == UICollectionViewScrollDirectionVertical) ?
+    CGRectMake(insets.left,
+               CGRectGetMaxY(rollingSectionBounds),
+               paddedLengthInFixedDirection,
+               hideHeaderWhenItemsEmpty ? 0 : footerSize.height) :
+    CGRectMake(CGRectGetMaxX(rollingSectionBounds) + insets.right,
+               insets.top,
+               hideHeaderWhenItemsEmpty ? 0 : footerSize.width,
+               paddedLengthInFixedDirection);
+    
+    _sectionData[section].footerBounds = footerBounds;
+    
+    // union the header before setting the bounds of the  section
+    // only do this when the header has a size, otherwise the union stretches to box empty space
+    if (headerExists) {
+        rollingSectionBounds = CGRectUnion(rollingSectionBounds, headerBounds);
+    }
+    if (footerExists) {
+        rollingSectionBounds = CGRectUnion(rollingSectionBounds, footerBounds);
+    }
+    
+    _sectionData[section].bounds = rollingSectionBounds;
+    _sectionData[section].insets = insets;
+    
+    // bump the coord for the next section with the right insets
+    itemCoordInFixedDirection += UIEdgeInsetsTrailingInsetInDirection(insets, fixedDirection);
+    
+    // find the farthest point in the section and add the trailing inset to find the next row's coord
+    nextRowCoordInScrollDirection = MAX(nextRowCoordInScrollDirection, CGRectGetMaxInDirection(rollingSectionBounds, self.scrollDirection) + UIEdgeInsetsTrailingInsetInDirection(insets, self.scrollDirection));
+    
+    // keep track of coordinates for partial invalidation
+    _sectionData[section].lastItemCoordInScrollDirection = itemCoordInScrollDirection;
+    _sectionData[section].lastItemCoordInFixedDirection = itemCoordInFixedDirection;
+    _sectionData[section].lastNextRowCoordInScrollDirection = nextRowCoordInScrollDirection;
+}
+
+- (void)_calculateWaterFlow:(UICollectionView *)collectionView
+                columnCount:(NSInteger)columnCount
+adjustedCollectionViewBounds:(const CGRect &)adjustedCollectionViewBounds
+                delegate:(id<UICollectionViewDelegateFlowLayout>)delegate
+itemCoordInFixedDirection:(CGFloat &)itemCoordInFixedDirection
+itemCoordInScrollDirection:(CGFloat &)itemCoordInScrollDirection
+nextRowCoordInScrollDirection:(CGFloat &)nextRowCoordInScrollDirection
+    rollingSectionBounds:(CGRect &)rollingSectionBounds
+                 section:(NSInteger)section
+{
+    const NSInteger itemCount = [collectionView numberOfItemsInSection:section];
+    const BOOL itemsEmpty = itemCount == 0;
+    const BOOL hideHeaderWhenItemsEmpty = itemsEmpty && !self.showHeaderWhenEmpty;
+    _sectionData[section].itemBounds = std::vector<CGRect>(itemCount);
+    _sectionData[section].columnData = std::vector<IGListSectionColumnEntry>(columnCount);
+    
+    const CGSize headerSize = [delegate collectionView:collectionView layout:self referenceSizeForHeaderInSection:section];
+    const CGSize footerSize = [delegate collectionView:collectionView layout:self referenceSizeForFooterInSection:section];
+    const UIEdgeInsets insets = [delegate collectionView:collectionView layout:self insetForSectionAtIndex:section];
+    const CGFloat lineSpacing = [delegate collectionView:collectionView layout:self minimumLineSpacingForSectionAtIndex:section];
+    const CGFloat interitemSpacing = [delegate collectionView:collectionView layout:self minimumInteritemSpacingForSectionAtIndex:section];
+    
+    const CGSize paddedCollectionViewSize = UIEdgeInsetsInsetRect(adjustedCollectionViewBounds, insets).size;
+    const UICollectionViewScrollDirection fixedDirection = self.scrollDirection == UICollectionViewScrollDirectionHorizontal ? UICollectionViewScrollDirectionVertical : UICollectionViewScrollDirectionHorizontal;
+    
+    const CGFloat paddedLengthInFixedDirection = CGSizeGetLengthInDirection(paddedCollectionViewSize, fixedDirection);
+    const CGFloat paddedColumnLenInFixedDirection = CGSizeGetColumnLenInDirection(paddedCollectionViewSize, columnCount, interitemSpacing, fixedDirection);
+    
+    const CGFloat headerLengthInScrollDirection = hideHeaderWhenItemsEmpty ? 0 : CGSizeGetLengthInDirection(headerSize, self.scrollDirection);
+    const CGFloat footerLengthInScrollDirection = hideHeaderWhenItemsEmpty ? 0 : CGSizeGetLengthInDirection(footerSize, self.scrollDirection);
+    const BOOL headerExists = headerLengthInScrollDirection > 0;
+    const BOOL footerExists = footerLengthInScrollDirection > 0;
+    
+    // start the section accounting for the header size
+    // header length in scroll direction is subtracted from the sectionBounds when calculating the header bounds after items are done
+    // this bumps the first row of items over enough to make room for the header
+    nextRowCoordInScrollDirection += headerLengthInScrollDirection;
+    CGFloat sectionCoordInFixedDirection = UIEdgeInsetsLeadingInsetInDirection(insets, fixedDirection);
+
+    for (NSInteger column = 0; column < columnCount; column++) {
+        _sectionData[section].columnData[column].coordInFixedDirection = sectionCoordInFixedDirection + (column * paddedColumnLenInFixedDirection + interitemSpacing);
+        _sectionData[section].columnData[column].lastCoordInScrollDirection = nextRowCoordInScrollDirection;
+    }
+    
+    for (NSInteger item = 0; item < itemCount; item++)
+    {
+        NSIndexPath *indexPath = [NSIndexPath indexPathForItem:item inSection:section];
+        const CGSize size = [delegate collectionView:collectionView layout:self sizeForItemAtIndexPath:indexPath];
+        CGFloat itemLenInFixedDirection = MIN(CGSizeGetLengthInDirection(size, fixedDirection), paddedColumnLenInFixedDirection);
+        
+        // 计算每个item的时候，都对每列的最大高度进行一次排序，每次都把当前item加到高度最低的那一列上
+        std::sort(_sectionData[section].columnData.begin(), _sectionData[section].columnData.end(), sortColumnEntry);
+        CGFloat coordInFixedDirection = _sectionData[section].columnData[0].coordInFixedDirection;
+        CGFloat coordInScrollDirection = _sectionData[section].columnData[0].lastCoordInScrollDirection;
+        
+        // 非第一行的话，需要加上行间距
+        if (item >= columnCount ) {
+            coordInScrollDirection += lineSpacing;
+        }
+        
+        const CGRect rawFrame = (self.scrollDirection == UICollectionViewScrollDirectionVertical) ?
+        CGRectMake(coordInFixedDirection,
+                   coordInScrollDirection + insets.top,
+                   itemLenInFixedDirection,
+                   size.height) :
+        CGRectMake(coordInScrollDirection + insets.left,
+                   coordInFixedDirection,
+                   size.width,
+                   itemLenInFixedDirection);
+        const CGRect frame = IGListRectIntegralScaled(rawFrame);
+        _sectionData[section].itemBounds[item] = frame;
+        
+        const CGFloat lastCoordInScrollDirection = (self.scrollDirection == UICollectionViewScrollDirectionVertical) ? coordInScrollDirection + size.height : coordInScrollDirection + size.width;
+        _sectionData[section].columnData[0].lastCoordInScrollDirection = lastCoordInScrollDirection;
+        
+        // union the rolling section bounds
+        if (item == 0) {
+            rollingSectionBounds = frame;
+        } else {
+            rollingSectionBounds = CGRectUnion(rollingSectionBounds, frame);
+        }
+    }
+    
+    const CGRect headerBounds = self.scrollDirection == UICollectionViewScrollDirectionVertical ?
+    CGRectMake(insets.left,
+               itemsEmpty ? CGRectGetMaxY(rollingSectionBounds) : CGRectGetMinY(rollingSectionBounds) - headerSize.height,
+               paddedLengthInFixedDirection,
+               hideHeaderWhenItemsEmpty ? 0 : headerSize.height) :
+    CGRectMake(itemsEmpty ? CGRectGetMaxX(rollingSectionBounds) : CGRectGetMinX(rollingSectionBounds) - headerSize.width,
+               insets.top,
+               hideHeaderWhenItemsEmpty ? 0 : headerSize.width,
+               paddedLengthInFixedDirection);
+    
+    _sectionData[section].headerBounds = headerBounds;
+    
+    if (itemsEmpty) {
+        rollingSectionBounds = headerBounds;
+    }
+    
+    const CGRect footerBounds = (self.scrollDirection == UICollectionViewScrollDirectionVertical) ?
+    CGRectMake(insets.left,
+               CGRectGetMaxY(rollingSectionBounds),
+               paddedLengthInFixedDirection,
+               hideHeaderWhenItemsEmpty ? 0 : footerSize.height) :
+    CGRectMake(CGRectGetMaxX(rollingSectionBounds) + insets.right,
+               insets.top,
+               hideHeaderWhenItemsEmpty ? 0 : footerSize.width,
+               paddedLengthInFixedDirection);
+    
+    _sectionData[section].footerBounds = footerBounds;
+    
+    // union the header before setting the bounds of the  section
+    // only do this when the header has a size, otherwise the union stretches to box empty space
+    if (headerExists) {
+        rollingSectionBounds = CGRectUnion(rollingSectionBounds, headerBounds);
+    }
+    if (footerExists) {
+        rollingSectionBounds = CGRectUnion(rollingSectionBounds, footerBounds);
+    }
+    
+    _sectionData[section].bounds = rollingSectionBounds;
+    _sectionData[section].insets = insets;
+    
+    // bump the coord for the next section with the right insets
+    sectionCoordInFixedDirection += UIEdgeInsetsTrailingInsetInDirection(insets, fixedDirection);
+    itemCoordInFixedDirection = sectionCoordInFixedDirection;
+    // find the farthest point in the section and add the trailing inset to find the next row's coord
+    nextRowCoordInScrollDirection = MAX(nextRowCoordInScrollDirection, CGRectGetMaxInDirection(rollingSectionBounds, self.scrollDirection) + UIEdgeInsetsTrailingInsetInDirection(insets, self.scrollDirection));
+    
+    // keep track of coordinates for partial invalidation
+    std::sort(_sectionData[section].columnData.begin(), _sectionData[section].columnData.end(), sortColumnEntry);
+    _sectionData[section].lastItemCoordInScrollDirection = _sectionData[section].columnData.back().lastCoordInScrollDirection;
+    _sectionData[section].lastItemCoordInFixedDirection = itemCoordInFixedDirection;
+    _sectionData[section].lastNextRowCoordInScrollDirection = nextRowCoordInScrollDirection;
+    
+    itemCoordInScrollDirection = nextRowCoordInScrollDirection;
+}
+
+- (void)_calculateLayoutIfNeeded
+{
     if (_minimumInvalidatedSection == NSNotFound) {
         return;
     }
@@ -523,7 +837,7 @@ static void adjustZIndexForAttributes(UICollectionViewLayoutAttributes *attribut
 
     const NSInteger sectionCount = [collectionView numberOfSections];
     const UIEdgeInsets contentInset = collectionView.ig_contentInset;
-    const CGRect contentInsetAdjustedCollectionViewBounds = UIEdgeInsetsInsetRect(collectionView.bounds, contentInset);
+    const CGRect adjustedCollectionViewBounds = UIEdgeInsetsInsetRect(collectionView.bounds, contentInset);
 
     _sectionData.resize(sectionCount);
 
@@ -543,160 +857,23 @@ static void adjustZIndexForAttributes(UICollectionViewLayoutAttributes *attribut
         rollingSectionBounds = _sectionData[lastValidSection].bounds;
     }
 
-    for (NSInteger section = _minimumInvalidatedSection; section < sectionCount; section++) {
-        const NSInteger itemCount = [collectionView numberOfItemsInSection:section];
-        const BOOL itemsEmpty = itemCount == 0;
-        const BOOL hideHeaderWhenItemsEmpty = itemsEmpty && !self.showHeaderWhenEmpty;
-        _sectionData[section].itemBounds = std::vector<CGRect>(itemCount);
-
-        const CGSize headerSize = [delegate collectionView:collectionView layout:self referenceSizeForHeaderInSection:section];
-        const CGSize footerSize = [delegate collectionView:collectionView layout:self referenceSizeForFooterInSection:section];
-        const UIEdgeInsets insets = [delegate collectionView:collectionView layout:self insetForSectionAtIndex:section];
-        const CGFloat lineSpacing = [delegate collectionView:collectionView layout:self minimumLineSpacingForSectionAtIndex:section];
-        const CGFloat interitemSpacing = [delegate collectionView:collectionView layout:self minimumInteritemSpacingForSectionAtIndex:section];
-        
-        const CGSize paddedCollectionViewSize = UIEdgeInsetsInsetRect(contentInsetAdjustedCollectionViewBounds, insets).size;
-        const UICollectionViewScrollDirection fixedDirection = self.scrollDirection == UICollectionViewScrollDirectionHorizontal ? UICollectionViewScrollDirectionVertical : UICollectionViewScrollDirectionHorizontal;
-        const CGFloat paddedLengthInFixedDirection = CGSizeGetLengthInDirection(paddedCollectionViewSize, fixedDirection);
-        const CGFloat headerLengthInScrollDirection = hideHeaderWhenItemsEmpty ? 0 : CGSizeGetLengthInDirection(headerSize, self.scrollDirection);
-        const CGFloat footerLengthInScrollDirection = hideHeaderWhenItemsEmpty ? 0 : CGSizeGetLengthInDirection(footerSize, self.scrollDirection);
-        const BOOL headerExists = headerLengthInScrollDirection > 0;
-        const BOOL footerExists = footerLengthInScrollDirection > 0;
-        
-        // start the section accounting for the header size
-        // header length in scroll direction is subtracted from the sectionBounds when calculating the header bounds after items are done
-        // this bumps the first row of items over enough to make room for the header
-        itemCoordInScrollDirection += headerLengthInScrollDirection;
-        nextRowCoordInScrollDirection += headerLengthInScrollDirection;
-        
-        // add the leading inset in fixed direction in case the section falls on the same row as the previous
-        // if the section is newlined then the coord in fixed direction is reset
-        itemCoordInFixedDirection += UIEdgeInsetsLeadingInsetInDirection(insets, fixedDirection);
-        
-        // the farthest in the fixed direction the frame of an item in this section can go
-        const CGFloat maxCoordinateInFixedDirection = CGRectGetLengthInDirection(contentInsetAdjustedCollectionViewBounds, fixedDirection) - UIEdgeInsetsTrailingInsetInDirection(insets, fixedDirection);
-        
-        for (NSInteger item = 0; item < itemCount; item++) {
-            NSIndexPath *indexPath = [NSIndexPath indexPathForItem:item inSection:section];
-            const CGSize size = [delegate collectionView:collectionView layout:self sizeForItemAtIndexPath:indexPath];
-            
-            IGAssert(CGSizeGetLengthInDirection(size, fixedDirection) <= paddedLengthInFixedDirection
-                     || fabs(CGSizeGetLengthInDirection(size, fixedDirection) - paddedLengthInFixedDirection) < FLT_EPSILON,
-                     @"%@ of item %li in section %li (%.0f pt) must be less than or equal to container (%.0f pt) accounting for section insets %@",
-                     self.scrollDirection == UICollectionViewScrollDirectionVertical ? @"Width" : @"Height",
-                     (long)item,
-                     (long)section,
-                     CGSizeGetLengthInDirection(size, fixedDirection),
-                     CGRectGetLengthInDirection(contentInsetAdjustedCollectionViewBounds, fixedDirection),
-                     NSStringFromUIEdgeInsets(insets));
-            
-            CGFloat itemLengthInFixedDirection = MIN(CGSizeGetLengthInDirection(size, fixedDirection), paddedLengthInFixedDirection);
-            
-            // if the origin and length in fixed direction of the item busts the size of the container
-            // or if this is the first item and the header has a non-zero size
-            // newline to the next row and reset
-            // define epsilon to avoid float overflow issue
-            const CGFloat epsilon = 1.0;
-            if (itemCoordInFixedDirection + itemLengthInFixedDirection > maxCoordinateInFixedDirection + epsilon
-                || (item == 0 && headerExists)) {
-                itemCoordInScrollDirection = nextRowCoordInScrollDirection;
-                itemCoordInFixedDirection = UIEdgeInsetsLeadingInsetInDirection(insets, fixedDirection);
-                
-                
-                // if newlining, always append line spacing unless its the very first item of the section
-                if (item > 0) {
-                    itemCoordInScrollDirection += lineSpacing;
-                }
-            }
-            
-            const CGFloat distanceToEdge = paddedLengthInFixedDirection - (itemCoordInFixedDirection + itemLengthInFixedDirection);
-            if (self.stretchToEdge && distanceToEdge > 0 && distanceToEdge <= epsilon) {
-                itemLengthInFixedDirection = paddedLengthInFixedDirection - itemCoordInFixedDirection;
-            }
-            
-            const CGRect rawFrame = (self.scrollDirection == UICollectionViewScrollDirectionVertical) ?
-            CGRectMake(itemCoordInFixedDirection,
-                       itemCoordInScrollDirection + insets.top,
-                       itemLengthInFixedDirection,
-                       size.height) :
-            CGRectMake(itemCoordInScrollDirection + insets.left,
-                       itemCoordInFixedDirection,
-                       size.width,
-                       itemLengthInFixedDirection);
-            const CGRect frame = IGListRectIntegralScaled(rawFrame);
-            
-            _sectionData[section].itemBounds[item] = frame;
-            
-            // track the max size of the row to find the coord of the next row, adjust for leading inset while iterating items
-            nextRowCoordInScrollDirection = MAX(CGRectGetMaxInDirection(frame, self.scrollDirection) - UIEdgeInsetsLeadingInsetInDirection(insets, self.scrollDirection), nextRowCoordInScrollDirection);
-            
-            // increase the rolling coord in fixed direction appropriately and add item spacing for all items on the same row
-            itemCoordInFixedDirection += itemLengthInFixedDirection + interitemSpacing;
-            
-            // union the rolling section bounds
-            if (item == 0) {
-                rollingSectionBounds = frame;
-            } else {
-                rollingSectionBounds = CGRectUnion(rollingSectionBounds, frame);
-            }
+    for (NSInteger section = _minimumInvalidatedSection; section < sectionCount; section++)
+    {
+        id<WBCollectionViewDelegateFlowLayout> flowLayout = (id<WBCollectionViewDelegateFlowLayout>)delegate;
+        const BOOL isWaterFlow = [flowLayout collectionView:collectionView layout:self isWaterFlowInSection:section];
+        const NSInteger column = [flowLayout collectionView:collectionView layout:self waterFlowColumnInSection:section];
+        if (isWaterFlow && column > 1) {
+            [self _calculateWaterFlow:collectionView columnCount:column adjustedCollectionViewBounds:adjustedCollectionViewBounds delegate:delegate itemCoordInFixedDirection:itemCoordInFixedDirection itemCoordInScrollDirection:itemCoordInScrollDirection nextRowCoordInScrollDirection:nextRowCoordInScrollDirection rollingSectionBounds:rollingSectionBounds section:section];
+        }else{
+            [self _calculateNormal:collectionView adjustedCollectionViewBounds:adjustedCollectionViewBounds delegate:delegate itemCoordInFixedDirection:itemCoordInFixedDirection itemCoordInScrollDirection:itemCoordInScrollDirection nextRowCoordInScrollDirection:nextRowCoordInScrollDirection rollingSectionBounds:rollingSectionBounds section:section];
         }
-        
-        const CGRect headerBounds = self.scrollDirection == UICollectionViewScrollDirectionVertical ?
-        CGRectMake(insets.left,
-                   itemsEmpty ? CGRectGetMaxY(rollingSectionBounds) : CGRectGetMinY(rollingSectionBounds) - headerSize.height,
-                   paddedLengthInFixedDirection,
-                   hideHeaderWhenItemsEmpty ? 0 : headerSize.height) :
-        CGRectMake(itemsEmpty ? CGRectGetMaxX(rollingSectionBounds) : CGRectGetMinX(rollingSectionBounds) - headerSize.width,
-                   insets.top,
-                   hideHeaderWhenItemsEmpty ? 0 : headerSize.width,
-                   paddedLengthInFixedDirection);
-        
-        _sectionData[section].headerBounds = headerBounds;
-        
-        if (itemsEmpty) {
-            rollingSectionBounds = headerBounds;
-        }
-        
-        const CGRect footerBounds = (self.scrollDirection == UICollectionViewScrollDirectionVertical) ?
-        CGRectMake(insets.left,
-                   CGRectGetMaxY(rollingSectionBounds),
-                   paddedLengthInFixedDirection,
-                   hideHeaderWhenItemsEmpty ? 0 : footerSize.height) :
-        CGRectMake(CGRectGetMaxX(rollingSectionBounds) + insets.right,
-                   insets.top,
-                   hideHeaderWhenItemsEmpty ? 0 : footerSize.width,
-                   paddedLengthInFixedDirection);
-        
-        _sectionData[section].footerBounds = footerBounds;
-        
-        // union the header before setting the bounds of the  section
-        // only do this when the header has a size, otherwise the union stretches to box empty space
-        if (headerExists) {
-            rollingSectionBounds = CGRectUnion(rollingSectionBounds, headerBounds);
-        }
-        if (footerExists) {
-            rollingSectionBounds = CGRectUnion(rollingSectionBounds, footerBounds);
-        }
-        
-        _sectionData[section].bounds = rollingSectionBounds;
-        _sectionData[section].insets = insets;
-        
-        // bump the coord for the next section with the right insets
-        itemCoordInFixedDirection += UIEdgeInsetsTrailingInsetInDirection(insets, fixedDirection);
-        
-        // find the farthest point in the section and add the trailing inset to find the next row's coord
-        nextRowCoordInScrollDirection = MAX(nextRowCoordInScrollDirection, CGRectGetMaxInDirection(rollingSectionBounds, self.scrollDirection) + UIEdgeInsetsTrailingInsetInDirection(insets, self.scrollDirection));
-        
-        // keep track of coordinates for partial invalidation
-        _sectionData[section].lastItemCoordInScrollDirection = itemCoordInScrollDirection;
-        _sectionData[section].lastItemCoordInFixedDirection = itemCoordInFixedDirection;
-        _sectionData[section].lastNextRowCoordInScrollDirection = nextRowCoordInScrollDirection;
     }
     
     _minimumInvalidatedSection = NSNotFound;
 }
 
-- (NSRange)_rangeOfSectionsInRect:(CGRect)rect {
+- (NSRange)_rangeOfSectionsInRect:(CGRect)rect
+{
     NSRange result = NSMakeRange(NSNotFound, 0);
     
     const NSInteger sectionCount = _sectionData.size();

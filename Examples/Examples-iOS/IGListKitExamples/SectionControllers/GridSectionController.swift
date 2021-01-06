@@ -67,21 +67,32 @@ final class GridSectionController: ListSectionController {
         case 0:
             itemSize = 50
         case 1:
-            itemSize = 200
+            itemSize = 120
         case 2:
             itemSize = 100
         case 3:
-            itemSize = 10
+            itemSize = 30
         case 4:
             itemSize = 100
         case 5:
             itemSize = 50
         case 6:
-            itemSize = 20
+            itemSize = 40
         default:
             itemSize = floor(width / 4)
         }
-        return CGSize(width: itemSize, height: itemSize)
+        return CGSize(width: 194, height: itemSize)
+    }
+
+    override func isWaterFlow() -> Bool {
+        if self.section % 2 == 0 {
+            return false
+        }
+        return true
+    }
+
+    override func waterFlowColumn() -> Int {
+        return 3
     }
 
     override func cellForItem(at index: Int) -> UICollectionViewCell {

@@ -133,6 +133,11 @@ NS_SWIFT_NAME(ListSectionController)
  */
 - (void)moveObjectFromIndex:(NSInteger)sourceIndex toIndex:(NSInteger)destinationIndex NS_AVAILABLE_IOS(9_0);
 
+
+- (BOOL)isWaterFlow;
+
+- (NSInteger)waterFlowColumn;
+
 /**
  The view controller housing the adapter that created this section controller.
 

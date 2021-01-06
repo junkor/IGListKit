@@ -299,6 +299,17 @@
     return [self sizeForSupplementaryViewOfKind:UICollectionElementKindSectionFooter atIndexPath:indexPath];
 }
 
+#pragma mark - WBCollectionViewDelegateFlowLayout
+- (BOOL)collectionView:(UICollectionView *)collectionView layout:(UICollectionViewLayout*)collectionViewLayout isWaterFlowInSection:(NSInteger)section
+{
+    return [self isWaterFlowInSection:section];
+}
+
+- (NSInteger)collectionView:(UICollectionView *)collectionView layout:(UICollectionViewLayout*)collectionViewLayout waterFlowColumnInSection:(NSInteger)section
+{
+    return [self waterFlowColumnInSection:section];
+}
+
 #pragma mark - IGListCollectionViewDelegateLayout
 
 - (UICollectionViewLayoutAttributes *)collectionView:(UICollectionView *)collectionView

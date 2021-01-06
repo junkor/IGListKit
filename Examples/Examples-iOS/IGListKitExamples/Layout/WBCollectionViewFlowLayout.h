@@ -1,5 +1,5 @@
 //
-//  FlexLayout.h
+//  WBCollectionViewFlowLayout.h
 //  IGListKitExamples
 //
 //  Created by junlin3 on 2020/12/17.
@@ -11,7 +11,7 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-@interface FlexLayout : UICollectionViewLayout <IGListCollectionViewLayoutCompatible>
+@interface WBCollectionViewFlowLayout : UICollectionViewLayout <IGListCollectionViewLayoutCompatible>
 
 @property (nonatomic, readonly) UICollectionViewScrollDirection scrollDirection;
 
