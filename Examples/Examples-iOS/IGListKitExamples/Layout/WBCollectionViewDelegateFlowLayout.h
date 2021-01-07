@@ -12,7 +12,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 @protocol WBCollectionViewDelegateFlowLayout <UICollectionViewDelegateFlowLayout>
 
-@optional
+@required
 
 /// 局部Section是否支持瀑布流形式的布局
 /// @param collectionView
