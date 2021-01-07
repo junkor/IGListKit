@@ -14,7 +14,7 @@ final class MixedDataViewController: UIViewController, ListAdapterDataSource, Li
         return ListAdapter(updater: ListAdapterUpdater(), viewController: self)
     }()
 
-    let collectionView = UICollectionView(frame: .zero, collectionViewLayout: WBCollectionViewFlowLayout.init(stickyHeaders: false, topContentInset: 10, stretchToEdge: true))
+    let collectionView = UICollectionView(frame: .zero, collectionViewLayout: WBCollectionViewFlowLayout.init(stickyHeaders: false, scrollDirection: .vertical, topContentInset: 10, stretchToEdge: true))
 
     var data: [Any] = [
         "Maecenas faucibus mollis interdum. Duis mollis, est non commodo luctus, nisi erat porttitor ligula, eget lacinia odio sem nec elit.",

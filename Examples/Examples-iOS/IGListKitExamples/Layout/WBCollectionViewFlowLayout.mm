@@ -126,10 +126,39 @@ struct IGListSectionColumnEntry {
     CGFloat coordInFixedDirection;
     // 当前列的最边界坐标
     CGFloat lastCoordInScrollDirection;
+    
+    bool operator< (const IGListSectionColumnEntry entry)const {
+        return lastCoordInScrollDirection < entry.lastCoordInScrollDirection;
+    }
+    bool operator> (const IGListSectionColumnEntry entry)const {
+        return lastCoordInScrollDirection > entry.lastCoordInScrollDirection;
+    }
 };
 
-static bool sortColumnEntry(IGListSectionColumnEntry entry1, IGListSectionColumnEntry entry2) {
+static bool sortColumnEntry(const IGListSectionColumnEntry& entry1, const IGListSectionColumnEntry& entry2) {
     return entry1.lastCoordInScrollDirection < entry2.lastCoordInScrollDirection;
+}
+
+static IGListSectionColumnEntry& largestEntry(std::vector<IGListSectionColumnEntry>& entries) {
+    auto *largestEntry = &entries[0];
+    for (auto& entry : entries)
+    {
+        if (*largestEntry > entry) {
+            largestEntry = &entry;
+        }
+    }
+    return *largestEntry;
+}
+
+static IGListSectionColumnEntry& leastEntry(std::vector<IGListSectionColumnEntry>& entries) {
+    auto *leastEntry = &entries[0];
+    for (auto& entry : entries)
+    {
+        if (*leastEntry > entry) {
+            leastEntry = &entry;
+        }
+    }
+    return *leastEntry;
 }
 
 
@@ -724,7 +753,7 @@ nextRowCoordInScrollDirection:(CGFloat &)nextRowCoordInScrollDirection
     CGFloat sectionCoordInFixedDirection = UIEdgeInsetsLeadingInsetInDirection(insets, fixedDirection);
 
     for (NSInteger column = 0; column < columnCount; column++) {
-        _sectionData[section].columnData[column].coordInFixedDirection = sectionCoordInFixedDirection + (column * paddedColumnLenInFixedDirection + interitemSpacing);
+        _sectionData[section].columnData[column].coordInFixedDirection = sectionCoordInFixedDirection + column * (paddedColumnLenInFixedDirection + interitemSpacing);
         _sectionData[section].columnData[column].lastCoordInScrollDirection = nextRowCoordInScrollDirection;
     }
     
@@ -735,9 +764,13 @@ nextRowCoordInScrollDirection:(CGFloat &)nextRowCoordInScrollDirection
         CGFloat itemLenInFixedDirection = MIN(CGSizeGetLengthInDirection(size, fixedDirection), paddedColumnLenInFixedDirection);
         
         // 计算每个item的时候，都对每列的最大高度进行一次排序，每次都把当前item加到高度最低的那一列上
-        std::sort(_sectionData[section].columnData.begin(), _sectionData[section].columnData.end(), sortColumnEntry);
-        CGFloat coordInFixedDirection = _sectionData[section].columnData[0].coordInFixedDirection;
-        CGFloat coordInScrollDirection = _sectionData[section].columnData[0].lastCoordInScrollDirection;
+        auto iter = std::min_element(_sectionData[section].columnData.begin(),
+                                     _sectionData[section].columnData.end(),
+                                     [](const IGListSectionColumnEntry& lhs, const IGListSectionColumnEntry& rhs) {
+            return lhs.lastCoordInScrollDirection < rhs.lastCoordInScrollDirection ;
+        });
+        CGFloat coordInFixedDirection = iter->coordInFixedDirection;
+        CGFloat coordInScrollDirection = iter->lastCoordInScrollDirection;
         
         // 非第一行的话，需要加上行间距
         if (item >= columnCount ) {
@@ -757,7 +790,8 @@ nextRowCoordInScrollDirection:(CGFloat &)nextRowCoordInScrollDirection
         _sectionData[section].itemBounds[item] = frame;
         
         const CGFloat lastCoordInScrollDirection = (self.scrollDirection == UICollectionViewScrollDirectionVertical) ? coordInScrollDirection + size.height : coordInScrollDirection + size.width;
-        _sectionData[section].columnData[0].lastCoordInScrollDirection = lastCoordInScrollDirection;
+        iter->lastCoordInScrollDirection = lastCoordInScrollDirection;
+        
         
         // union the rolling section bounds
         if (item == 0) {
@@ -814,8 +848,13 @@ nextRowCoordInScrollDirection:(CGFloat &)nextRowCoordInScrollDirection
     nextRowCoordInScrollDirection = MAX(nextRowCoordInScrollDirection, CGRectGetMaxInDirection(rollingSectionBounds, self.scrollDirection) + UIEdgeInsetsTrailingInsetInDirection(insets, self.scrollDirection));
     
     // keep track of coordinates for partial invalidation
-    std::sort(_sectionData[section].columnData.begin(), _sectionData[section].columnData.end(), sortColumnEntry);
-    _sectionData[section].lastItemCoordInScrollDirection = _sectionData[section].columnData.back().lastCoordInScrollDirection;
+//    std::sort(_sectionData[section].columnData.begin(), _sectionData[section].columnData.end(), sortColumnEntry);
+    auto iter = std::max_element(_sectionData[section].columnData.begin(),
+                                 _sectionData[section].columnData.end(),
+                                 [](const IGListSectionColumnEntry& lhs, const IGListSectionColumnEntry& rhs) {
+        return lhs.lastCoordInScrollDirection < rhs.lastCoordInScrollDirection ;
+    });
+    _sectionData[section].lastItemCoordInScrollDirection = iter -> lastCoordInScrollDirection;
     _sectionData[section].lastItemCoordInFixedDirection = itemCoordInFixedDirection;
     _sectionData[section].lastNextRowCoordInScrollDirection = nextRowCoordInScrollDirection;
     

@@ -85,9 +85,9 @@ final class GridSectionController: ListSectionController {
     }
 
     override func isWaterFlow() -> Bool {
-        if self.section % 2 == 0 {
-            return false
-        }
+//        if self.section % 2 == 0 {
+//            return false
+//        }
         return true
     }
 
