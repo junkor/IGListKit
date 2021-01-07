@@ -126,40 +126,7 @@ struct IGListSectionColumnEntry {
     CGFloat coordInFixedDirection;
     // 当前列的最边界坐标
     CGFloat lastCoordInScrollDirection;
-    
-    bool operator< (const IGListSectionColumnEntry entry)const {
-        return lastCoordInScrollDirection < entry.lastCoordInScrollDirection;
-    }
-    bool operator> (const IGListSectionColumnEntry entry)const {
-        return lastCoordInScrollDirection > entry.lastCoordInScrollDirection;
-    }
 };
-
-static bool sortColumnEntry(const IGListSectionColumnEntry& entry1, const IGListSectionColumnEntry& entry2) {
-    return entry1.lastCoordInScrollDirection < entry2.lastCoordInScrollDirection;
-}
-
-static IGListSectionColumnEntry& largestEntry(std::vector<IGListSectionColumnEntry>& entries) {
-    auto *largestEntry = &entries[0];
-    for (auto& entry : entries)
-    {
-        if (*largestEntry > entry) {
-            largestEntry = &entry;
-        }
-    }
-    return *largestEntry;
-}
-
-static IGListSectionColumnEntry& leastEntry(std::vector<IGListSectionColumnEntry>& entries) {
-    auto *leastEntry = &entries[0];
-    for (auto& entry : entries)
-    {
-        if (*leastEntry > entry) {
-            leastEntry = &entry;
-        }
-    }
-    return *leastEntry;
-}
 
 
 struct IGListSectionEntry {
@@ -192,14 +159,6 @@ struct IGListSectionEntry {
     CGFloat lastNextRowCoordInScrollDirection;
 
     /******************************支持waterflow方式的布局*********************************/
-    BOOL isWaterflow;
-    
-    // 当前section支持的列数
-    NSInteger columnCount;
-    
-    // 多列的话，存储列宽，下一列item的起始位置（竖向的话，影响x，横向影响y）
-    CGFloat columnWidth;
-    
     // 记录每一列排布的最后边界值，找最下的那个放置下一个元素
     std::vector<IGListSectionColumnEntry> columnData;
     
@@ -848,7 +807,6 @@ nextRowCoordInScrollDirection:(CGFloat &)nextRowCoordInScrollDirection
     nextRowCoordInScrollDirection = MAX(nextRowCoordInScrollDirection, CGRectGetMaxInDirection(rollingSectionBounds, self.scrollDirection) + UIEdgeInsetsTrailingInsetInDirection(insets, self.scrollDirection));
     
     // keep track of coordinates for partial invalidation
-//    std::sort(_sectionData[section].columnData.begin(), _sectionData[section].columnData.end(), sortColumnEntry);
     auto iter = std::max_element(_sectionData[section].columnData.begin(),
                                  _sectionData[section].columnData.end(),
                                  [](const IGListSectionColumnEntry& lhs, const IGListSectionColumnEntry& rhs) {
@@ -901,7 +859,8 @@ nextRowCoordInScrollDirection:(CGFloat &)nextRowCoordInScrollDirection
         id<WBCollectionViewDelegateFlowLayout> flowLayout = (id<WBCollectionViewDelegateFlowLayout>)delegate;
         const BOOL isWaterFlow = [flowLayout collectionView:collectionView layout:self isWaterFlowInSection:section];
         const NSInteger column = [flowLayout collectionView:collectionView layout:self waterFlowColumnInSection:section];
-        if (isWaterFlow && column > 1) {
+        if (isWaterFlow && column > 1)
+        {
             [self _calculateWaterFlow:collectionView columnCount:column adjustedCollectionViewBounds:adjustedCollectionViewBounds delegate:delegate itemCoordInFixedDirection:itemCoordInFixedDirection itemCoordInScrollDirection:itemCoordInScrollDirection nextRowCoordInScrollDirection:nextRowCoordInScrollDirection rollingSectionBounds:rollingSectionBounds section:section];
         }else{
             [self _calculateNormal:collectionView adjustedCollectionViewBounds:adjustedCollectionViewBounds delegate:delegate itemCoordInFixedDirection:itemCoordInFixedDirection itemCoordInScrollDirection:itemCoordInScrollDirection nextRowCoordInScrollDirection:nextRowCoordInScrollDirection rollingSectionBounds:rollingSectionBounds section:section];
