@@ -1,29 +1,26 @@
 //
-//  WBCollectionViewFlowLayout.m
+//  WBStreamCollectionViewLayout.m
 //  IGListKitExamples
 //
 //  Created by junlin3 on 2020/12/17.
 //  Copyright © 2020 Instagram. All rights reserved.
 //
 
-#import "WBCollectionViewFlowLayout.h"
-#import "WBCollectionViewDelegateFlowLayout.h"
+#import "WBStreamCollectionViewLayout.h"
+#import "WBStreamCollectionViewDelegateLayout.h"
 
 #import <vector>
 
-#import <IGListDiffKit/IGListAssert.h>
-#import <IGListKit/IGListCollectionViewDelegateLayout.h>
 
+@interface UIScrollView (WBStream)
 
-@interface UIScrollView (IGListKit)
-
-- (UIEdgeInsets) ig_contentInset;
+- (UIEdgeInsets) wbs_contentInset;
 
 @end
 
-@implementation UIScrollView (IGListKit)
+@implementation UIScrollView (WBStream)
 
-- (UIEdgeInsets) ig_contentInset
+- (UIEdgeInsets) wbs_contentInset
 {
     if (@available(iOS 11.0, tvOS 11.0, *)) {
         return self.adjustedContentInset;
@@ -35,7 +32,7 @@
 @end
 
 
-static CGRect IGListRectIntegralScaled(CGRect rect) {
+static CGRect WBStreamRectIntegralScaled(CGRect rect) {
     CGFloat scale = [[UIScreen mainScreen] scale];
     return CGRectMake(floorf(rect.origin.x * scale) / scale,
                       floorf(rect.origin.y * scale) / scale,
@@ -109,7 +106,7 @@ static NSIndexPath *indexPathForSection(NSInteger section) {
     return [NSIndexPath indexPathForItem:0 inSection:section];
 }
 
-static NSInteger IGListMergeMinimumInvalidatedSection(NSInteger section, NSInteger otherSection) {
+static NSInteger WBStreamMergeMinimumInvalidatedSection(NSInteger section, NSInteger otherSection) {
     if (section == NSNotFound && otherSection == NSNotFound) {
         return NSNotFound;
     } else if (section == NSNotFound) {
@@ -121,7 +118,7 @@ static NSInteger IGListMergeMinimumInvalidatedSection(NSInteger section, NSInteg
     return MIN(section, otherSection);
 }
 
-struct IGListSectionColumnEntry {
+struct WBStreamSectionColumnEntry {
     // 当前列的x坐标（每一列的x坐标在当前组确定列数的时候就确定了）
     CGFloat coordInFixedDirection;
     // 当前列的最边界坐标
@@ -129,7 +126,7 @@ struct IGListSectionColumnEntry {
 };
 
 
-struct IGListSectionEntry {
+struct WBStreamSectionEntry {
     /**
      Represents the minimum-bounding box of every element in the section. This includes all item frames as well as the
      header bounds. It is made simply by unioning all item and header frames. Use this to find section intersections
@@ -160,10 +157,7 @@ struct IGListSectionEntry {
 
     /******************************支持waterflow方式的布局*********************************/
     // 记录每一列排布的最后边界值，找最下的那个放置下一个元素
-    std::vector<IGListSectionColumnEntry> columnData;
-    
-    // 记录下一个添加元素的列下标
-    NSInteger nextColumnIndex;
+    std::vector<WBStreamSectionColumnEntry> columnData;
     
     // Returns YES when the section has visible content (header and/or items).
     BOOL isValid() {
@@ -192,18 +186,18 @@ static void adjustZIndexForAttributes(UICollectionViewLayoutAttributes *attribut
     }
 }
 
-@interface IGListCollectionViewLayoutInvalidationContext : UICollectionViewLayoutInvalidationContext
-@property (nonatomic, assign) BOOL ig_invalidateSupplementaryAttributes;
-@property (nonatomic, assign) BOOL ig_invalidateAllAttributes;
+@interface WBStreamCollectionViewLayoutInvalidationContext : UICollectionViewLayoutInvalidationContext
+@property (nonatomic, assign) BOOL wbs_invalidateSupplementaryAttributes;
+@property (nonatomic, assign) BOOL wbs_invalidateAllAttributes;
 @end
 
-@implementation IGListCollectionViewLayoutInvalidationContext
+@implementation WBStreamCollectionViewLayoutInvalidationContext
 @end
 
 
 
 
-@interface WBCollectionViewFlowLayout ()
+@interface WBStreamCollectionViewLayout ()
 
 @property (nonatomic, assign, readonly) BOOL stickyHeaders;
 @property (nonatomic, assign, readonly) CGFloat topContentInset;
@@ -211,8 +205,8 @@ static void adjustZIndexForAttributes(UICollectionViewLayoutAttributes *attribut
 
 @end
 
-@implementation WBCollectionViewFlowLayout {
-    std::vector<IGListSectionEntry> _sectionData;
+@implementation WBStreamCollectionViewLayout {
+    std::vector<WBStreamSectionEntry> _sectionData;
     NSMutableDictionary<NSIndexPath *, UICollectionViewLayoutAttributes *> *_attributesCache;
 
     // invalidate starting at this section
@@ -267,7 +261,7 @@ static void adjustZIndexForAttributes(UICollectionViewLayoutAttributes *attribut
 
 - (UICollectionViewLayoutAttributes *)initialLayoutAttributesForAppearingItemAtIndexPath:(NSIndexPath *)itemIndexPath {
     UICollectionViewLayoutAttributes *attributes = [super initialLayoutAttributesForAppearingItemAtIndexPath:itemIndexPath];
-    id<IGListCollectionViewDelegateLayout> delegate = (id<IGListCollectionViewDelegateLayout>)self.collectionView.delegate;
+    id<WBStreamCollectionViewDelegateLayout> delegate = (id<WBStreamCollectionViewDelegateLayout>)self.collectionView.delegate;
     if ([delegate respondsToSelector:@selector(collectionView:layout:customizedInitialLayoutAttributes:atIndexPath:)]) {
         return [delegate collectionView:self.collectionView
                                  layout:self
@@ -279,7 +273,7 @@ static void adjustZIndexForAttributes(UICollectionViewLayoutAttributes *attribut
 
 - (UICollectionViewLayoutAttributes *)finalLayoutAttributesForDisappearingItemAtIndexPath:(NSIndexPath *)itemIndexPath{
     UICollectionViewLayoutAttributes *attributes = [super finalLayoutAttributesForDisappearingItemAtIndexPath:itemIndexPath];
-    id<IGListCollectionViewDelegateLayout> delegate = (id<IGListCollectionViewDelegateLayout>)self.collectionView.delegate;
+    id<WBStreamCollectionViewDelegateLayout> delegate = (id<WBStreamCollectionViewDelegateLayout>)self.collectionView.delegate;
     if ([delegate respondsToSelector:@selector(collectionView:layout:customizedFinalLayoutAttributes:atIndexPath:)]) {
         return [delegate collectionView:self.collectionView
                                  layout:self
@@ -289,9 +283,8 @@ static void adjustZIndexForAttributes(UICollectionViewLayoutAttributes *attribut
     return attributes;
 }
 
-- (NSArray<UICollectionViewLayoutAttributes *> *)layoutAttributesForElementsInRect:(CGRect)rect {
-    IGAssertMainThread();
-
+- (NSArray<UICollectionViewLayoutAttributes *> *)layoutAttributesForElementsInRect:(CGRect)rect
+{
     NSMutableArray *result = [NSMutableArray new];
 
     const NSRange range = [self _rangeOfSectionsInRect:rect];
@@ -330,10 +323,8 @@ static void adjustZIndexForAttributes(UICollectionViewLayoutAttributes *attribut
     return result;
 }
 
-- (UICollectionViewLayoutAttributes *)layoutAttributesForItemAtIndexPath:(NSIndexPath *)indexPath {
-    IGAssertMainThread();
-    IGParameterAssert(indexPath != nil);
-
+- (UICollectionViewLayoutAttributes *)layoutAttributesForItemAtIndexPath:(NSIndexPath *)indexPath
+{
     UICollectionViewLayoutAttributes *attributes = _attributesCache[indexPath];
     if (attributes != nil) {
         return attributes;
@@ -354,10 +345,8 @@ static void adjustZIndexForAttributes(UICollectionViewLayoutAttributes *attribut
     return attributes;
 }
 
-- (UICollectionViewLayoutAttributes *)layoutAttributesForSupplementaryViewOfKind:(NSString *)elementKind atIndexPath:(NSIndexPath *)indexPath {
-    IGAssertMainThread();
-    IGParameterAssert(indexPath != nil);
-
+- (UICollectionViewLayoutAttributes *)layoutAttributesForSupplementaryViewOfKind:(NSString *)elementKind atIndexPath:(NSIndexPath *)indexPath
+{
     UICollectionViewLayoutAttributes *attributes = _supplementaryAttributesCache[elementKind][indexPath];
     if (attributes != nil) {
         return attributes;
@@ -370,7 +359,7 @@ static void adjustZIndexForAttributes(UICollectionViewLayoutAttributes *attribut
     }
 
     UICollectionView *collectionView = self.collectionView;
-    const IGListSectionEntry entry = _sectionData[section];
+    const WBStreamSectionEntry entry = _sectionData[section];
     const CGFloat minOffset = CGRectGetMinInDirection(entry.bounds, self.scrollDirection);
 
     CGRect frame = CGRectZero;
@@ -414,18 +403,17 @@ static void adjustZIndexForAttributes(UICollectionViewLayoutAttributes *attribut
     }
 }
 
-- (CGSize)collectionViewContentSize {
-    IGAssertMainThread();
-
+- (CGSize)collectionViewContentSize
+{
     const NSInteger sectionCount = _sectionData.size();
 
     if (sectionCount == 0) {
         return CGSizeZero;
     }
 
-    const IGListSectionEntry section = _sectionData[sectionCount - 1];
+    const WBStreamSectionEntry section = _sectionData[sectionCount - 1];
     UICollectionView *collectionView = self.collectionView;
-    const UIEdgeInsets contentInset = collectionView.ig_contentInset;
+    const UIEdgeInsets contentInset = collectionView.wbs_contentInset;
     switch (self.scrollDirection) {
         case UICollectionViewScrollDirectionVertical: {
             const CGFloat height = CGRectGetMaxY(section.bounds) + section.insets.bottom;
@@ -439,7 +427,7 @@ static void adjustZIndexForAttributes(UICollectionViewLayoutAttributes *attribut
 
 }
 
-- (void)invalidateLayoutWithContext:(IGListCollectionViewLayoutInvalidationContext *)context {
+- (void)invalidateLayoutWithContext:(WBStreamCollectionViewLayoutInvalidationContext *)context {
     BOOL hasInvalidatedItemIndexPaths = NO;
     if ([context respondsToSelector:@selector(invalidatedItemIndexPaths)]) {
         hasInvalidatedItemIndexPaths = [context invalidatedItemIndexPaths].count > 0;
@@ -447,7 +435,7 @@ static void adjustZIndexForAttributes(UICollectionViewLayoutAttributes *attribut
 
     if (hasInvalidatedItemIndexPaths
         || [context invalidateEverything]
-        || context.ig_invalidateAllAttributes) {
+        || context.wbs_invalidateAllAttributes) {
         // invalidates all
         _minimumInvalidatedSection = 0;
     } else if ([context invalidateDataSourceCounts] && _minimumInvalidatedSection == NSNotFound) {
@@ -455,7 +443,7 @@ static void adjustZIndexForAttributes(UICollectionViewLayoutAttributes *attribut
         _minimumInvalidatedSection = 0;
     }
 
-    if (context.ig_invalidateSupplementaryAttributes) {
+    if (context.wbs_invalidateSupplementaryAttributes) {
         [self _resetSupplementaryAttributesCache];
     }
 
@@ -463,17 +451,17 @@ static void adjustZIndexForAttributes(UICollectionViewLayoutAttributes *attribut
 }
 
 + (Class)invalidationContextClass {
-    return [IGListCollectionViewLayoutInvalidationContext class];
+    return [WBStreamCollectionViewLayoutInvalidationContext class];
 }
 
 - (UICollectionViewLayoutInvalidationContext *)invalidationContextForBoundsChange:(CGRect)newBounds {
     const CGRect oldBounds = self.collectionView.bounds;
 
-    IGListCollectionViewLayoutInvalidationContext *context =
-    (IGListCollectionViewLayoutInvalidationContext *)[super invalidationContextForBoundsChange:newBounds];
-    context.ig_invalidateSupplementaryAttributes = YES;
+    WBStreamCollectionViewLayoutInvalidationContext *context =
+    (WBStreamCollectionViewLayoutInvalidationContext *)[super invalidationContextForBoundsChange:newBounds];
+    context.wbs_invalidateSupplementaryAttributes = YES;
     if (!CGSizeEqualToSize(oldBounds.size, newBounds.size)) {
-        context.ig_invalidateAllAttributes = YES;
+        context.wbs_invalidateAllAttributes = YES;
     }
     return context;
 }
@@ -500,14 +488,13 @@ static void adjustZIndexForAttributes(UICollectionViewLayoutAttributes *attribut
 
 #pragma mark - Public API
 
-- (void)setStickyHeaderYOffset:(CGFloat)stickyHeaderYOffset {
-    IGAssertMainThread();
-
+- (void)setStickyHeaderYOffset:(CGFloat)stickyHeaderYOffset
+{
     if (_stickyHeaderYOffset != stickyHeaderYOffset) {
         _stickyHeaderYOffset = stickyHeaderYOffset;
 
-        IGListCollectionViewLayoutInvalidationContext *invalidationContext = [IGListCollectionViewLayoutInvalidationContext new];
-        invalidationContext.ig_invalidateSupplementaryAttributes = YES;
+        WBStreamCollectionViewLayoutInvalidationContext *invalidationContext = [WBStreamCollectionViewLayoutInvalidationContext new];
+        invalidationContext.wbs_invalidateSupplementaryAttributes = YES;
         [self invalidateLayoutWithContext:invalidationContext];
     }
 }
@@ -559,16 +546,6 @@ nextRowCoordInScrollDirection:(CGFloat &)nextRowCoordInScrollDirection
         NSIndexPath *indexPath = [NSIndexPath indexPathForItem:item inSection:section];
         const CGSize size = [delegate collectionView:collectionView layout:self sizeForItemAtIndexPath:indexPath];
         
-        IGAssert(CGSizeGetLengthInDirection(size, fixedDirection) <= paddedLengthInFixedDirection
-                 || fabs(CGSizeGetLengthInDirection(size, fixedDirection) - paddedLengthInFixedDirection) < FLT_EPSILON,
-                 @"%@ of item %li in section %li (%.0f pt) must be less than or equal to container (%.0f pt) accounting for section insets %@",
-                 self.scrollDirection == UICollectionViewScrollDirectionVertical ? @"Width" : @"Height",
-                 (long)item,
-                 (long)section,
-                 CGSizeGetLengthInDirection(size, fixedDirection),
-                 CGRectGetLengthInDirection(adjustedCollectionViewBounds, fixedDirection),
-                 NSStringFromUIEdgeInsets(insets));
-        
         CGFloat itemLengthInFixedDirection = MIN(CGSizeGetLengthInDirection(size, fixedDirection), paddedLengthInFixedDirection);
         
         // if the origin and length in fixed direction of the item busts the size of the container
@@ -602,7 +579,7 @@ nextRowCoordInScrollDirection:(CGFloat &)nextRowCoordInScrollDirection
                    itemCoordInFixedDirection,
                    size.width,
                    itemLengthInFixedDirection);
-        const CGRect frame = IGListRectIntegralScaled(rawFrame);
+        const CGRect frame = WBStreamRectIntegralScaled(rawFrame);
         
         _sectionData[section].itemBounds[item] = frame;
         
@@ -686,7 +663,7 @@ nextRowCoordInScrollDirection:(CGFloat &)nextRowCoordInScrollDirection
     const BOOL itemsEmpty = itemCount == 0;
     const BOOL hideHeaderWhenItemsEmpty = itemsEmpty && !self.showHeaderWhenEmpty;
     _sectionData[section].itemBounds = std::vector<CGRect>(itemCount);
-    _sectionData[section].columnData = std::vector<IGListSectionColumnEntry>(columnCount);
+    _sectionData[section].columnData = std::vector<WBStreamSectionColumnEntry>(columnCount);
     
     const CGSize headerSize = [delegate collectionView:collectionView layout:self referenceSizeForHeaderInSection:section];
     const CGSize footerSize = [delegate collectionView:collectionView layout:self referenceSizeForFooterInSection:section];
@@ -725,7 +702,7 @@ nextRowCoordInScrollDirection:(CGFloat &)nextRowCoordInScrollDirection
         // 计算每个item的时候，都对每列的最大高度进行一次排序，每次都把当前item加到高度最低的那一列上
         auto iter = std::min_element(_sectionData[section].columnData.begin(),
                                      _sectionData[section].columnData.end(),
-                                     [](const IGListSectionColumnEntry& lhs, const IGListSectionColumnEntry& rhs) {
+                                     [](const WBStreamSectionColumnEntry& lhs, const WBStreamSectionColumnEntry& rhs) {
             return lhs.lastCoordInScrollDirection < rhs.lastCoordInScrollDirection ;
         });
         CGFloat coordInFixedDirection = iter->coordInFixedDirection;
@@ -745,7 +722,7 @@ nextRowCoordInScrollDirection:(CGFloat &)nextRowCoordInScrollDirection
                    coordInFixedDirection,
                    size.width,
                    itemLenInFixedDirection);
-        const CGRect frame = IGListRectIntegralScaled(rawFrame);
+        const CGRect frame = WBStreamRectIntegralScaled(rawFrame);
         _sectionData[section].itemBounds[item] = frame;
         
         const CGFloat lastCoordInScrollDirection = (self.scrollDirection == UICollectionViewScrollDirectionVertical) ? coordInScrollDirection + size.height : coordInScrollDirection + size.width;
@@ -809,7 +786,7 @@ nextRowCoordInScrollDirection:(CGFloat &)nextRowCoordInScrollDirection
     // keep track of coordinates for partial invalidation
     auto iter = std::max_element(_sectionData[section].columnData.begin(),
                                  _sectionData[section].columnData.end(),
-                                 [](const IGListSectionColumnEntry& lhs, const IGListSectionColumnEntry& rhs) {
+                                 [](const WBStreamSectionColumnEntry& lhs, const WBStreamSectionColumnEntry& rhs) {
         return lhs.lastCoordInScrollDirection < rhs.lastCoordInScrollDirection ;
     });
     _sectionData[section].lastItemCoordInScrollDirection = iter -> lastCoordInScrollDirection;
@@ -833,7 +810,7 @@ nextRowCoordInScrollDirection:(CGFloat &)nextRowCoordInScrollDirection
     id<UICollectionViewDelegateFlowLayout> delegate = (id<UICollectionViewDelegateFlowLayout>)collectionView.delegate;
 
     const NSInteger sectionCount = [collectionView numberOfSections];
-    const UIEdgeInsets contentInset = collectionView.ig_contentInset;
+    const UIEdgeInsets contentInset = collectionView.wbs_contentInset;
     const CGRect adjustedCollectionViewBounds = UIEdgeInsetsInsetRect(collectionView.bounds, contentInset);
 
     _sectionData.resize(sectionCount);
@@ -856,7 +833,7 @@ nextRowCoordInScrollDirection:(CGFloat &)nextRowCoordInScrollDirection
 
     for (NSInteger section = _minimumInvalidatedSection; section < sectionCount; section++)
     {
-        id<WBCollectionViewDelegateFlowLayout> flowLayout = (id<WBCollectionViewDelegateFlowLayout>)delegate;
+        id<WBStreamCollectionViewDelegateLayout> flowLayout = (id<WBStreamCollectionViewDelegateLayout>)delegate;
         const BOOL isWaterFlow = [flowLayout collectionView:collectionView layout:self isWaterFlowInSection:section];
         const NSInteger column = [flowLayout collectionView:collectionView layout:self waterFlowColumnInSection:section];
         if (isWaterFlow && column > 1)
@@ -876,7 +853,7 @@ nextRowCoordInScrollDirection:(CGFloat &)nextRowCoordInScrollDirection
     
     const NSInteger sectionCount = _sectionData.size();
     for (NSInteger section = 0; section < sectionCount; section++) {
-        IGListSectionEntry entry = _sectionData[section];
+        WBStreamSectionEntry entry = _sectionData[section];
         if (entry.isValid() && CGRectIntersectsRect(entry.bounds, rect)) {
             const NSRange sectionRange = NSMakeRange(section, 1);
             if (result.location == NSNotFound) {
@@ -899,7 +876,7 @@ nextRowCoordInScrollDirection:(CGFloat &)nextRowCoordInScrollDirection
 #pragma mark - Minimum Invalidated Section
 
 - (void)didModifySection:(NSInteger)modifiedSection {
-    _minimumInvalidatedSection = IGListMergeMinimumInvalidatedSection(_minimumInvalidatedSection, modifiedSection);
+    _minimumInvalidatedSection = WBStreamMergeMinimumInvalidatedSection(_minimumInvalidatedSection, modifiedSection);
 }
 
 @end

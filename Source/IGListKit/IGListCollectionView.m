@@ -26,7 +26,11 @@
 #pragma mark - IGListCollectionViewLayout
 
 - (UICollectionViewLayout<IGListCollectionViewLayoutCompatible> *)_listLayout {
-    if ([self.collectionViewLayout conformsToProtocol:@protocol(IGListCollectionViewLayoutCompatible)]) {
+//    if ([self.collectionViewLayout conformsToProtocol:@protocol(IGListCollectionViewLayoutCompatible)]) {
+//        return (UICollectionViewLayout<IGListCollectionViewLayoutCompatible> *)self.collectionViewLayout;
+//    }
+    
+    if ([self.collectionViewLayout respondsToSelector:@selector(didModifySection:)]) {
         return (UICollectionViewLayout<IGListCollectionViewLayoutCompatible> *)self.collectionViewLayout;
     }
 

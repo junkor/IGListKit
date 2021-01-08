@@ -1,5 +1,5 @@
 //
-//  WBCollectionViewFlowLayout.h
+//  WBStreamCollectionViewLayout.h
 //  IGListKitExamples
 //
 //  Created by junlin3 on 2020/12/17.
@@ -7,11 +7,11 @@
 //
 
 #import <UIKit/UIKit.h>
-#import "IGListCollectionViewLayoutCompatible.h"
+#import "WBStreamCollectionViewLayoutCompatible.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
-@interface WBCollectionViewFlowLayout : UICollectionViewLayout <IGListCollectionViewLayoutCompatible>
+@interface WBStreamCollectionViewLayout : UICollectionViewLayout <WBStreamCollectionViewLayoutCompatible>
 
 @property (nonatomic, readonly) UICollectionViewScrollDirection scrollDirection;
 

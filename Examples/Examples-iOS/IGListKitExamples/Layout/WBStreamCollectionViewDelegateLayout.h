@@ -1,5 +1,5 @@
 //
-//  WBCollectionViewDelegateFlowLayout.h
+//  WBCollectionViewDelegateLayout.h
 //  IGListKitExamples
 //
 //  Created by junlin3 on 2021/1/5.
@@ -10,7 +10,13 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-@protocol WBCollectionViewDelegateFlowLayout <UICollectionViewDelegateFlowLayout>
+@protocol WBStreamCollectionViewDelegateLayout <UICollectionViewDelegateFlowLayout>
+
+@optional
+
+- (UICollectionViewLayoutAttributes *)collectionView:(UICollectionView *)collectionView layout:(UICollectionViewLayout*)collectionViewLayout customizedInitialLayoutAttributes:(UICollectionViewLayoutAttributes *)attributes atIndexPath:(NSIndexPath *)indexPath;
+
+- (UICollectionViewLayoutAttributes *)collectionView:(UICollectionView *)collectionView layout:(UICollectionViewLayout*)collectionViewLayout customizedFinalLayoutAttributes:(UICollectionViewLayoutAttributes *)attributes atIndexPath:(NSIndexPath *)indexPath;
 
 @required
 

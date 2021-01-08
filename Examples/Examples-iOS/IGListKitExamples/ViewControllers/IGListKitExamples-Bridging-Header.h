@@ -7,4 +7,4 @@
 
 #import "ObjcDemoViewController.h"
 #import "ObjcGeneratedModelDemoViewController.h"
-#import "WBCollectionViewFlowLayout.h"
+#import "WBStreamCollectionViewLayout.h"
