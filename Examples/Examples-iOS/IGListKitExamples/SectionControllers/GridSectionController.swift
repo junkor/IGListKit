@@ -62,6 +62,11 @@ final class GridSectionController: ListSectionController {
 
     override func sizeForItem(at index: Int) -> CGSize {
         let width = collectionContext?.containerSize.width ?? 0
+
+        if section == 1 {
+            return CGSize(width: width / 2.0, height: 80)
+        }
+
         var itemSize: CGFloat = 0
         switch index {
         case 0:
@@ -85,9 +90,9 @@ final class GridSectionController: ListSectionController {
     }
 
     override func isWaterFlow() -> Bool {
-//        if self.section % 2 == 0 {
-//            return false
-//        }
+        if self.section == 1 {
+            return false
+        }
         return true
     }
 
